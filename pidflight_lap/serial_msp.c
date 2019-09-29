@@ -148,6 +148,14 @@ static bool processOutCommand(uint8_t cmdMSP)
       serialize16(lapTimer.rssi[lap_number - 1]);
       serialize16(lapTimer.rssi_filter[lap_number - 1]);
       break;
+    case MSP_DEBUG:
+      headSerialReply(7);
+      serialize8(state);
+      serialize8(lapTimer.state);
+      serialize8(lapTimer.count);
+      serialize16(rssi);
+      serialize16(rssi_filter);
+      break;
     default:
       return false;
   }
@@ -202,6 +210,9 @@ static bool processInCommand(void)
       if (lap_maximum > LAP_TIMER_MAXIMUM_LAPS) {
         lap_maximum = LAP_TIMER_MAXIMUM_LAPS;
       }
+      break;
+    case MSP_SET_DEBUG:
+      debug = read8();
       break;
     case MSP_EEPROM_WRITE:
       writeEEPROM();
@@ -312,4 +323,13 @@ static bool mspProcessReceivedData(uint8_t c)
     }
   }
   return true;
+}
+
+static void mspProcessSendCommand(uint8_t cmdMSP)
+{
+  currentPort->cmdMSP = cmdMSP;
+  if (processOutCommand(cmdMSP)) {
+    tailSerialReply();
+    currentPort->c_state = IDLE;
+  }
 }

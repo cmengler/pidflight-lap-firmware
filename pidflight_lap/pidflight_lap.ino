@@ -8,7 +8,7 @@
 #include "buf_writer.c"
 #include "serial_msp.c"
 
-#if defined(ERLT)
+#ifdef SOFTWARE_SERIAL
 #include <SoftwareSerial.h>
 SoftwareSerial swSerial(PIN_SOFTSERIAL_RX, PIN_SOFTSERIAL_TX);
 #endif
@@ -26,6 +26,7 @@ uint16_t rssi_min = 0;
 uint16_t rssi_max = 0;
 
 uint16_t rssi_threshold = RSSI_THRESHOLD;
+uint8_t rssi_threshold_offset = 36;
 
 uint16_t rssi_filter = 0;
 uint16_t rssi_filter_q = 2000; //  0.01 - 655.36
@@ -35,11 +36,16 @@ uint16_t channel = 5740;
 
 uint8_t lap_maximum = LAP_TIMER_MAXIMUM_LAPS;
 
+uint16_t rssi_peak = 0;
+uint32_t rssi_peak_time = 0;
+
+uint8_t debug = 0;
+
 void setup()
 {
   // Setup serial connections
   Serial.begin(115200);
-#if defined(ERLT)
+#ifdef SOFTWARE_SERIAL
   swSerial.begin(9600);
 #endif
 
@@ -161,16 +167,21 @@ void loop()
 #ifdef SOFTWARE_SERIAL
   mspProcess(&swSerial, &swPort);
 #endif
+
+  // Dispatch debug data
+  if (debug == 1) {
+    mspProcessDebug(&Serial, &hwPort);
+  }
 }
 
 /******************************************************************
  * LAP PROCESSING
  ******************************************************************/
 
-void lapTimerStart(void)
+void lapTimerStart(uint32_t timerStart)
 {
   lapTimer.state = START;
-  lapTimer.timerStart = millis();
+  lapTimer.timerStart = timerStart;
 }
 
 void lapTimerElapsed(void)
@@ -179,14 +190,14 @@ void lapTimerElapsed(void)
   lapTimer.timerElapsed = timerStop - lapTimer.timerStart;
 }
 
-void lapTimerStop(void)
+void lapTimerStop(uint32_t timerStop)
 {
   lapTimer.state = STOP;
-  lapTimerElapsed();
+  lapTimer.timerElapsed = timerStop - lapTimer.timerStart;
   lapTimer.count++;
   lapTimer.times[lapTimer.count - 1] = lapTimer.timerElapsed;
   lapTimer.rssi[lapTimer.count - 1] = rssi;
-  lapTimer.rssi_filter[lapTimer.count - 1] = rssi_filter;
+  lapTimer.rssi_filter[lapTimer.count - 1] = rssi_peak;
 }
 
 void lapTimerReset(void)
@@ -200,13 +211,46 @@ void lapTimerReset(void)
   }
 }
 
+void lapPeakCapture(void)
+{
+  // Check if RSSI is on or post threshold, update RSSI peak
+  if (rssi_filter >= rssi_threshold) {
+    // Check if RSSI is greater than the previous detected peak
+    if (rssi_filter > rssi_peak) {
+      rssi_peak = rssi_filter;
+      rssi_peak_time = millis();
+    }
+  }
+}
+
+bool lapPeakCaptured(void)
+{
+  if (rssi_filter < rssi_peak && rssi_filter < (rssi_threshold - rssi_threshold_offset)) {
+    return true;
+  }
+  return false;
+}
+
+void lapPeakReset(void)
+{
+  rssi_peak = 0;
+  rssi_peak_time = 0;
+}
+
 void lapProcess()
 {
   switch (lapTimer.state) {
     case WAITING:
-      // Check if RSSI is on or post peak and timer min has elapsed, start lap
-      if (rssi_filter >= rssi_threshold) {
-        lapTimerStart();
+      lapPeakCapture();
+      // Check if the peak has been captured, start lap timer
+      if (lapPeakCaptured()) {
+        // Start timer with peak time
+        lapTimerStart(rssi_peak_time);
+
+        // Reset peak
+        lapPeakReset();
+
+		    // Beep to indicate lap started
         beep(100);
       }
       break;
@@ -214,16 +258,27 @@ void lapProcess()
       // Calculate current elapsed time
       lapTimerElapsed();
 
-      // Check if RSSI is on or post peak and timer min has elapsed, stop current lap
-      if (rssi_filter >= rssi_threshold && lapTimer.timerElapsed > lapTimer.timerMin) {
-        lapTimerStop();
-        beep(100);
+      // Check if timer min has elapsed, start capturing peak
+      if (lapTimer.timerElapsed > lapTimer.timerMin) {
+        lapPeakCapture();
       }
-      break;
-    case STOP:
-      if (lapTimer.count < lap_maximum) {
-        // Start lap
-        lapTimerStart();
+
+      // Check if the peak has been captured, stop/start lap timer
+      if (lapPeakCaptured()) {
+        // Stop current lap with peak time
+        lapTimerStop(rssi_peak_time);
+
+        // Check if lap count is less than the maximum number of laps, start timer
+        if (lapTimer.count < lap_maximum) {
+          // Start new lap with peak time again
+          lapTimerStart(rssi_peak_time);
+        }
+
+        // Reset peak
+        lapPeakReset();
+
+        // Beep to indicate lap started
+        beep(100);
       }
       break;
   }
@@ -281,6 +336,18 @@ void mspSerialWriteBuf(Stream *serialPort, uint8_t *data, int count)
   for (uint8_t *p = data; count > 0; count--, p++) {
     serialPort->write(*p);
   }
+}
+
+void mspProcessDebug(Stream *serialPort, mspPort_t *port)
+{
+  mspSetCurrentPort(port);
+
+  uint8_t buf[sizeof(bufWriter_t) + 20];
+  writer = bufWriterInit(buf, sizeof(buf), (bufWrite_t) mspSerialWriteBuf, serialPort);
+
+  mspProcessSendCommand(MSP_DEBUG);
+
+  bufWriterFlush(writer);
 }
 
 /******************************************************************

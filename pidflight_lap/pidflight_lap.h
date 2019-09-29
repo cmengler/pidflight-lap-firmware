@@ -41,14 +41,15 @@ extern uint16_t rssi_min;
 extern uint16_t rssi_max;
 extern uint16_t channel;
 extern uint8_t lap_maximum;
+extern uint8_t debug;
 
 extern uint16_t rssi_filter;
 extern uint16_t rssi_filter_q;
 extern uint16_t rssi_filter_r;
 
-void lapTimerStart(void);
+void lapTimerStart(uint32_t timerStart);
 void lapTimerElapsed(void);
-void lapTimerStop(void);
+void lapTimerStop(uint32_t timerStop);
 void lapTimerReset(void);
 
 void reset(void);
