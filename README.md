@@ -42,3 +42,13 @@ Run: `platformio run` to build all variants of the firmware.
 - **PIDflight Lap** use `platformio run --environment pdfl`
 - **EasyRaceLapTimer Pocket Edition** use `platformio run --environment erlt`
 - **Chorus RF** use `platformio run --environment chrf`
+
+## Support
+
+PIDflight Lap firmware and cross-platform GUI is provided free of charge to all users.
+
+If you find PIDflight Lap useful and would like to support continued development efforts please feel free to donate to this project or purchase the premium edition of the PIDflight Lap Android app, any donation or purchase is appreciated. Thank you! :)
+
+[![Donate to PIDflight Lap](https://raw.githubusercontent.com/cmengler/pidflight-lap/master/assets/paypal.png)](https://www.paypal.me/CMengler)
+
+[![Get it on Google Play](https://raw.githubusercontent.com/cmengler/pidflight-lap/master/assets/google_play.png)](https://play.google.com/store/apps/details?id=com.cmengler.laprssi)
